@@ -1,0 +1,7 @@
+package com.cnkvha.uuol.cache.server.generator;
+
+import com.cnkvha.uuol.cache.protocol.data.planet.ChunkData;
+
+public interface PlanetGenerator {
+	public ChunkData generate(long seed, long chunkX, long chunkY, long chunkZ);
+}

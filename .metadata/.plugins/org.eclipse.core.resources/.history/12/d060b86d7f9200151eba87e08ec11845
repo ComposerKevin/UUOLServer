@@ -1,0 +1,8 @@
+import com.cnkvha.uuol.cache.protocol.data.planet.ChunkData;
+
+public class TEST {
+	public static void main(String[] args) throws Exception{
+		ChunkData c = new ChunkData();
+		
+	}
+}

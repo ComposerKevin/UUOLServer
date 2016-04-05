@@ -1,0 +1,294 @@
+package com.cnkvha.uuol.cache.server;
+
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Map;
+import java.util.Properties;
+import java.util.Scanner;
+import java.util.UUID;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+
+import com.cnkvha.uuol.cache.protocol.UUOLComponent;
+import com.cnkvha.uuol.cache.protocol.data.RequestIdentifier;
+import com.cnkvha.uuol.cache.protocol.handlers.ResponseHandler;
+import com.cnkvha.uuol.cache.protocol.message.CacheAbstractMessage;
+import com.cnkvha.uuol.cache.protocol.message.CacheMessageBatch;
+import com.cnkvha.uuol.cache.protocol.message.general.request.CacheRequestLoadChunk;
+import com.cnkvha.uuol.cache.protocol.message.general.response.CacheResponseLoadChunk;
+import com.cnkvha.uuol.cache.server.cache.GeneralCache;
+import com.cnkvha.uuol.cache.server.utils.ChunkLoader;
+import com.cnkvha.uuol.sjl.ConnectionPool;
+import com.cnkvha.uuol.sjl.SerializationTool;
+import com.cnkvha.uuol.sjl.StringTools;
+import com.cnkvha.uuol.sjl.math.Vector3Long;
+import com.sun.enterprise.ee.cms.core.CallBack;
+import com.sun.enterprise.ee.cms.core.GMSFactory;
+import com.sun.enterprise.ee.cms.core.GroupManagementService;
+import com.sun.enterprise.ee.cms.core.Signal;
+import com.sun.enterprise.ee.cms.core.GMSConstants.shutdownType;
+import com.sun.enterprise.ee.cms.core.GroupManagementService.MemberType;
+import com.sun.enterprise.ee.cms.impl.client.MessageActionFactoryImpl;
+import com.sun.enterprise.ee.cms.impl.client.PlannedShutdownActionFactoryImpl;
+import com.sun.enterprise.ee.cms.impl.common.GMSConfigConstants;
+
+public class CacheServer {
+	private static CacheServer INSTANCE;
+	private final static Logger LOGGER = LogManager.getLogger("CacheServer");
+	
+	public static CacheServer getInstance() {
+		return INSTANCE;
+	}
+	
+	public Logger getLogger() {
+		return LOGGER;
+	}
+	
+	public static void main(String[] args) {
+		new CacheServer().run();
+	}
+	
+	
+
+	
+	private GroupManagementService gms;
+	
+	private CacheClientHandler recv;
+	
+	private boolean keepRunning;
+	
+	private GeneralCache cache;
+	
+	private ExecutorService threadPool;
+	
+	private ChunkLoader chunkLoader;
+	
+	/* ==================== STARTS HERE ==================== */
+	private void run(){
+		INSTANCE = this;
+		LOGGER.info("Starting main cache server... ");
+		LOGGER.info("Testing database connection... ");
+		if(!ConnectionPool.loadDriver()){
+			LOGGER.error("Can not load the MySQL Driver! ");
+			LOGGER.error("Server shutting down due to error! ");
+			return;
+		}
+		
+		if(ConnectionPool.test()){
+			LOGGER.info("Database is reachable! ");
+		}else{
+			LOGGER.error("Can not reach database! ");
+			LOGGER.error("Server shutting down due to error! ");
+			return;
+		}
+		LOGGER.info("Initiating thread pool... ");
+		threadPool = Executors.newFixedThreadPool(64);
+		
+		Properties prop = new Properties();
+		prop.setProperty(GMSConfigConstants.MULTICAST_ADDRESS, "235.5.5.5");
+		prop.setProperty(GMSConfigConstants.MULTICAST_PORT, "45588");
+		prop.setProperty(GMSConfigConstants.PING_TIMEOUT, "2000");
+		prop.setProperty(GMSConfigConstants.FD_MAX_RETRIES, "20");
+		prop.setProperty(GMSConfigConstants.FD_TIMEOUT, "1000");
+		
+		try {
+			gms = (GroupManagementService) GMSFactory.startGMSModule(StringTools.rndString(16), "UUOL_Network", MemberType.CORE, prop);
+			recv = new CacheClientHandler(this);
+		} catch (Exception e1) {
+			LOGGER.error("Faild to get the JGroup config! ");
+			System.exit(-1);
+			return;
+		}
+		try {
+			LOGGER.info("Joining the channel... ");
+			gms.join();
+		} catch (Exception e) {
+			e.printStackTrace();
+			if(gms != null) gms.shutdown(shutdownType.INSTANCE_SHUTDOWN);
+			LOGGER.error("Faild to join the group! ");
+			LOGGER.error("Server stopped! ");
+			return;
+		}
+		
+		cache = new GeneralCache(this);
+		
+		//REGISTER LISTENERS
+		gms.addActionFactory(new MessageActionFactoryImpl(recv), UUOLComponent.GENERAL);
+		CallBack cbViewChange = new CallBack(){
+			@Override
+			public void processNotification(Signal notification) {
+				recv.cleanUpRequests();
+			}
+		};
+		gms.addActionFactory(new PlannedShutdownActionFactoryImpl(cbViewChange));
+		//gms.addActionFactory(new FailureNotificationActionFactoryImpl(recv));
+		
+		LOGGER.info("Server started! ");
+		
+		//START PARSING COMMANDS
+		keepRunning = true;
+		enterLoop();
+		
+		recv.stop();
+		gms.shutdown(shutdownType.INSTANCE_SHUTDOWN);
+		LOGGER.info("Server stopped! ");
+	}
+	
+	public void enterLoop(){
+		Scanner scn = new Scanner(System.in);
+		while(keepRunning){
+			String cmd = scn.nextLine();
+			if(cmd.equalsIgnoreCase("test")){
+				ResponseHandler<CacheResponseLoadChunk> hdl = new ResponseHandler<CacheResponseLoadChunk>() {
+					@Override
+					public boolean needAllResponses() {
+						return true;
+					}
+					
+					@Override
+					public void handle(Map<String, CacheResponseLoadChunk> resp) {
+						getLogger().info("Got responses from servers: ");
+						resp.entrySet().forEach((ent) -> {
+							getLogger().info("Handled server: " + ent.getKey() + ", success=" + ent.getValue().status);
+						});
+					}
+				};
+				/*
+				RequestIdentifier id = new RequestIdentifier(gms.getInstanceName(), UUID.randomUUID());
+				CacheRequestLoadChunk req = new CacheRequestLoadChunk(id, new UUID(0L, 0L), new Vector3Long(0L, 0L, 0L));
+				recv.getRequests().register(recv.getCurrentClusters(), id, hdl);
+				*/
+				
+				//sendPacket(req, UUOLComponent.GENERAL);
+				CacheMessageBatch creqs = CacheRequestLoadChunk.getForRadius(gms.getInstanceName(), new UUID(0L, 0L), new Vector3Long(0, 0, 0), 2);
+				for(CacheAbstractMessage msg : creqs.messages){
+					CacheRequestLoadChunk chunk = (CacheRequestLoadChunk)msg;
+					recv.getRequests().register(recv.getCurrentClusters(), chunk.reqid, hdl);
+					System.out.println("Pos: " + chunk.chunkLocation.toString());
+				}
+				try {
+					System.out.println("Request composed! Count=" + creqs.messages.length + ", Length=" + SerializationTool.encode(creqs).length);
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				System.out.println("Press any key to initiate sending process! ");
+				scn.nextLine();
+				broadcastPacket(creqs, UUOLComponent.GENERAL);
+				System.out.println("SENT");
+			}else if(cmd.equalsIgnoreCase("single")){
+				ResponseHandler<CacheResponseLoadChunk> hdl = new ResponseHandler<CacheResponseLoadChunk>() {
+					@Override
+					public boolean needAllResponses() {
+						return true;
+					}
+					
+					@Override
+					public void handle(Map<String, CacheResponseLoadChunk> resp) {
+						getLogger().info("Got responses from servers: ");
+						resp.entrySet().forEach((ent) -> {
+							getLogger().info("Handled server: " + ent.getKey() + ", success=" + ent.getValue().status);
+						});
+					}
+				};
+				CacheRequestLoadChunk req = new CacheRequestLoadChunk(new RequestIdentifier(getGms().getInstanceName()), new UUID(0L, 0L), new Vector3Long(0L, 0L, 0L));
+				recv.getRequests().register(recv.getCurrentClusters(), req.reqid, hdl);
+				broadcastPacket(req, UUOLComponent.GENERAL);
+				System.out.println("SENT");
+			}else if(cmd.equalsIgnoreCase("status")){
+				System.out.println(cache.isPlanetInCache(new UUID(0L, 0L)));
+			}
+		}
+		scn.close();
+	}
+	
+	public void broadcastPacket(CacheAbstractMessage msg, String component){
+		if(msg == null) {
+			return;
+		}
+		
+		byte[] data = null;
+		try {
+			data = SerializationTool.encode(msg);
+		} catch (Exception e) {
+			e.printStackTrace();
+			getLogger().error("Can not serialize packet! ");
+			return;
+		}
+		if(data == null) return;
+		try {
+			gms.getGroupHandle().sendMessage(component.equals("") ? null : component , data);
+		} catch (Exception e) {
+			e.printStackTrace();
+			getLogger().error("Error sending packet! ");
+		}
+	}
+	
+	public void sendPacketTo(String targetCluster, CacheAbstractMessage msg, String component){
+		if(msg == null) {
+			return;
+		}
+		
+		byte[] data = null;
+		try {
+			data = SerializationTool.encode(msg);
+		} catch (Exception e) {
+			e.printStackTrace();
+			getLogger().error("Can not serialize packet! ");
+			return;
+		}
+		if(data == null) return;
+		try {
+			gms.getGroupHandle().sendMessage(targetCluster, component.equals("") ? null : component , data);
+		} catch (Exception e) {
+			e.printStackTrace();
+			getLogger().error("Error sending packet! ");
+		}
+	}
+	
+	public void sendPacketTo(List<String> targetClusters, CacheAbstractMessage msg, String component){
+		if(msg == null) {
+			return;
+		}
+		
+		byte[] data = null;
+		try {
+			data = SerializationTool.encode(msg);
+		} catch (Exception e) {
+			e.printStackTrace();
+			getLogger().error("Can not serialize packet! ");
+			return;
+		}
+		if(data == null) return;
+		try {
+			gms.getGroupHandle().sendMessage(targetClusters, component.equals("") ? null : component , data);
+		} catch (Exception e) {
+			e.printStackTrace();
+			getLogger().error("Error sending packet! ");
+		}
+	}
+	
+	public void sendPacketTo(String[] targetClusters, CacheAbstractMessage msg, String component){
+		sendPacketTo(Arrays.asList(targetClusters), msg, component);
+	}
+	
+	public CacheClientHandler getClientHandler() {
+		return recv;
+	}
+	
+	public GroupManagementService getGms() {
+		return gms;
+	}
+	
+	public ExecutorService getThreadPool() {
+		return threadPool;
+	}
+	
+	public GeneralCache getCache() {
+		return cache;
+	}
+}

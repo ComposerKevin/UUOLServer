@@ -1,0 +1,22 @@
+1435486161729	Delete elements
+1435502279629	Delete element
+1435503190154	Rename compilation unit 'Handler.java'
+1435503196958	Rename compilation unit 'CacheHandler.java'
+1435503428964	Move compilation unit
+1435504819832	Delete element
+1435570583828	Copy file
+1435570748274	Rename package 'com.cnkvha.uuol.cache.server.cache.world'
+1435570766492	Rename package 'planet'
+1435570773947	Rename type 'WorldChunkCache'
+1435571598728	Rename type 'CachedSingleChunk'
+1435571808296	Move compilation unit
+1435580198788	Rename type 'RequestResponseHandler'
+1435580530325	Delete element
+1435581761825	Delete element
+1435581770911	Delete element
+1435582196850	Rename type 'RequestContainer'
+1435582265714	Rename package 'com.cnkvha.uuol.cache.server.request'
+1435584350131	Delete element
+1435587345481	Rename package 'com.cnkvha.uuol.cache.server.request'
+1435587352685	Rename package 'com.cnkvha.uuol.cache.server.response'
+1435587360108	Move compilation unit

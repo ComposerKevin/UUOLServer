@@ -1,0 +1,40 @@
+1435486175919	Delete elements
+1435486190848	Delete element
+1435486197506	Delete element
+1435486517052	Copy compilation unit
+1435486580977	Copy compilation unit
+1435486591478	Rename type 'CopyOfEntityDataIntElement'
+1435486693244	Copy compilation unit
+1435486746419	Copy compilation unit
+1435486850807	Rename type 'CacheTypeVector3'
+1435486866919	Copy compilation unit
+1435486906379	Copy compilation unit
+1435486969908	Copy compilation unit
+1435488166180	Rename package 'com.cnkvha.uuol.cache.protocol.data.entity'
+1435488183730	Rename type 'EntityDataDoubleElement'
+1435488191809	Rename type 'EntityDataFloatElement'
+1435488199561	Rename type 'EntityDataIntElement'
+1435488204030	Rename type 'EntityDataLongElement'
+1435488208718	Rename type 'EntityDataStringElement'
+1435488213391	Rename type 'EntityDataVec3DElement'
+1435488217203	Rename type 'EntityDataVec3LElement'
+1435488229142	Rename package 'com.cnkvha.uuol.cache.protocol.data.entity.type'
+1435488317281	Rename package 'meta'
+1435488326267	Rename type 'EntityData'
+1435488333940	Rename type 'EntityDataType'
+1435488338518	Rename type 'EntityDataElement'
+1435501570398	Move compilation units
+1435501601626	Delete elements
+1435504724392	Move compilation unit
+1435504837436	Delete elements
+1435504906968	Rename package 'com.cnkvha.uuol.cache.protocol.message.general'
+1435504910025	Move compilation unit
+1435571506373	Rename type 'CacheMessageChunkStatus'
+1435571543174	Rename type 'CacheMessageEntitySpawn'
+1435571555347	Move compilation unit
+1435571564130	Move compilation unit
+1435581129406	Move compilation unit
+1435581138006	Rename type 'CacheRequestGetBlockAt'
+1435581164402	Rename type 'CacheRequestSetBlockAt'
+1435582817605	Move compilation unit
+1435582820404	Move compilation unit

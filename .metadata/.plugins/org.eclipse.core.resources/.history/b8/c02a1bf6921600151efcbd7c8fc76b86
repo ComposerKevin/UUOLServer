@@ -1,0 +1,71 @@
+package com.cnkvha.uuol.cache.protocol.codec;
+
+import java.io.IOException;
+
+import org.apache.mina.core.buffer.IoBuffer;
+import org.apache.mina.core.session.IoSession;
+import org.apache.mina.filter.codec.ProtocolDecoderOutput;
+import org.apache.mina.filter.codec.demux.MessageDecoder;
+import org.apache.mina.filter.codec.demux.MessageDecoderResult;
+
+import com.cnkvha.uuol.cache.protocol.CacheProtocolConstants;
+import com.cnkvha.uuol.cache.protocol.message.CacheAbstractMessage;
+
+public abstract class CacheAbstractMessageDecoder implements MessageDecoder {
+
+	private final int type;
+	
+	private boolean readHeader;
+
+	public CacheAbstractMessageDecoder(int type) {
+		this.type = type;
+	}
+	
+	@Override
+	public MessageDecoderResult decodable(IoSession s, IoBuffer io) {
+		if(io.remaining() < CacheProtocolConstants.HEADER_LEN){
+			return MessageDecoderResult.NEED_DATA;
+		}
+		
+		if(io.getShort() == type){
+			int l = io.getInt();
+			readHeader = true;
+			if(io.remaining() < l){
+				return MessageDecoderResult.OK;
+			}else{
+				return MessageDecoderResult.NEED_DATA;
+			}
+		}
+		
+		readHeader = false;
+		return MessageDecoderResult.NOT_OK;
+	}
+
+	@Override
+	public MessageDecoderResult decode(IoSession s, IoBuffer io,
+			ProtocolDecoderOutput o) throws Exception {
+		if(!readHeader){
+			io.getShort();
+			io.getInt();
+			readHeader = true;
+		}
+		
+		CacheAbstractMessage msg = decodeBody(s, io);
+		if(msg == null){
+			return MessageDecoderResult.NEED_DATA;
+		}else{
+			readHeader = false;
+		}
+		
+		o.write(msg);
+		return MessageDecoderResult.OK;
+	}
+
+	@Override
+	public void finishDecode(IoSession arg0, ProtocolDecoderOutput arg1)
+			throws Exception {
+	}
+	
+	public abstract CacheAbstractMessage decodeBody(IoSession s, IoBuffer io) throws IOException;
+
+}

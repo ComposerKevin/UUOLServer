@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Move element &apos;ChunkData.java&apos; to &apos;CacheProtocol/src/com.cnkvha.uuol.cache.protocol.data.world&apos;&#x0D;&#x0A;- Original project: &apos;JStandardLibrary&apos;&#x0D;&#x0A;- Destination element: &apos;CacheProtocol/src/com.cnkvha.uuol.cache.protocol.data.world&apos;&#x0D;&#x0A;- Original element: &apos;com.cnkvha.uuol.sjl.world.ChunkData.java&apos;&#x0D;&#x0A;- Update references to refactored element" description="Move compilation unit" destination="=CacheProtocol/src&lt;com.cnkvha.uuol.cache.protocol.data.world" element1="/src&lt;com.cnkvha.uuol.sjl.world{ChunkData.java" files="0" flags="589830" folders="0" id="org.eclipse.jdt.ui.move" patterns="*" policy="org.eclipse.jdt.ui.moveResources" qualified="false" references="true" stamp="1435571833752" units="1" version="1.0"/>
+</session>

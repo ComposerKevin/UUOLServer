@@ -1,0 +1,21 @@
+package com.cnkvha.uuol.cache.server.generator;
+
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
+
+public final class PlanetGeneratorManager {
+	private final static Map<String, PlanetGenerator> generators = new ConcurrentHashMap<>();
+	
+	static {
+		register("test", new TestGenerator());
+	}
+	
+	public static void register(String name, PlanetGenerator gen){
+		generators.put(name, gen);
+	}
+	
+	public static PlanetGenerator get(String name){
+		if(!generators.containsKey(name)) return null;
+		return generators.get(name);
+	}
+}

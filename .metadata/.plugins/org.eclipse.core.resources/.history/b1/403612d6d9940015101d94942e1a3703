@@ -1,0 +1,8 @@
+package com.cnkvha.uuol.sjl.db;
+
+public final class SQLHelper {
+	public static String encodeEquation(String field, Object obj){
+		String initial = "\"" + field + "\"=";
+		
+	}
+}

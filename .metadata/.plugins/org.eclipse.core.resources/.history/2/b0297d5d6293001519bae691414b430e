@@ -1,0 +1,14 @@
+package com.cnkvha.uuol.cache.server.utils;
+
+import java.util.Deque;
+
+import com.cnkvha.uuol.cache.protocol.message.general.request.CacheRequestLoadChunk;
+
+public class ChunkLoader {
+	private Deque<CacheRequestLoadChunk> queue;
+	
+	
+	public ChunkLoader() {
+		
+	}
+}

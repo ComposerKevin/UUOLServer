@@ -1,0 +1,26 @@
+package com.cnkvha.uuol.cache.server.utils;
+
+import java.util.Deque;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingDeque;
+
+import com.cnkvha.uuol.cache.protocol.message.general.request.CacheRequestLoadChunk;
+import com.cnkvha.uuol.sjl.GlobalConfiguration;
+
+public class ChunkLoader {
+	private Deque<CacheRequestLoadChunk> queue;
+	
+	private ExecutorService loaders = Executors.newFixedThreadPool(GlobalConfiguration.CHUNK_LOADER_THREADPOOL_SIZE);
+	
+	private atomin
+	
+	public ChunkLoader() {
+		queue = new LinkedBlockingDeque<>();
+	}
+	
+	
+	protected CacheRequestLoadChunk poll(){
+		//queue.poll();
+	}
+}

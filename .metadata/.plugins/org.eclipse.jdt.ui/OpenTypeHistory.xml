@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<typeInfoHistroy>
+<typeInfo handle="=CacheProtocol/src&lt;com.cnkvha.uuol.cache.protocol.message{CacheAbstractMessage.java[CacheAbstractMessage" modifiers="1025" timestamp="1448266700483"/>
+<typeInfo handle="=CacheProtocol/src&lt;com.cnkvha.uuol.cache.protocol.message{CacheMessageRequest.java[CacheMessageRequest" modifiers="1025" timestamp="1448266700492"/>
+<typeInfo handle="=CacheProtocol/src&lt;com.cnkvha.uuol.cache.protocol.data.meta{MetaDataElement.java[MetaDataElement" modifiers="513" timestamp="1448266700563"/>
+<typeInfo handle="=GameProtocol/src&lt;com.cnkvha.uuol.net.protocol{GamePacket.java[GamePacket" modifiers="1025" timestamp="1448614633842"/>
+<typeInfo handle="=GameProtocol/src&lt;com.cnkvha.uuol.net.protocol{ServerPacket.java[ServerPacket" modifiers="1025" timestamp="1448266700620"/>
+<typeInfo handle="=ClientEntranceServer/src&lt;com.cnkvha.uuol.clientent.server.net.handler{ClientPacketHandler.java[ClientPacketHandler" modifiers="1025" timestamp="1448266700522"/>
+<typeInfo handle="=CacheProtocol/src&lt;com.cnkvha.uuol.cache.protocol.handlers{BroadcastHandler.java[BroadcastHandler" modifiers="1025" timestamp="1448266700481"/>
+<typeInfo handle="=CacheProtocol/src&lt;com.cnkvha.uuol.cache.protocol.entity{CachedEntity.java[CachedEntity" modifiers="1025" timestamp="1448266700487"/>
+<typeInfo handle="=CacheProtocol/src&lt;com.cnkvha.uuol.cache.protocol.message.general.request{CacheRequestLoadChunk.java[CacheRequestLoadChunk" modifiers="1" timestamp="1448266700496"/>
+<typeInfo handle="=CacheProtocol/src&lt;com.cnkvha.uuol.cache.protocol.message{CacheMessageResponse.java[CacheMessageResponse" modifiers="1025" timestamp="1448266700493"/>
+<typeInfo handle="=CacheProtocol/src&lt;com.cnkvha.uuol.cache.protocol.handlers{RequestHandler.java[RequestHandler" modifiers="1025" timestamp="1448266700602"/>
+<typeInfo handle="=LogicCacheMain/D:\/Program Files\/Java\/jdk1.8.0_65\/jre\/lib\/rt.jar&lt;java.lang(Runnable.class[Runnable" modifiers="1537" timestamp="1447864521574"/>
+</typeInfoHistroy>

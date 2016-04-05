@@ -1,0 +1,88 @@
+package com.cnkvha.uuol.cache.server.cache.planet;
+
+
+import java.util.UUID;
+
+import com.cnkvha.uuol.cache.protocol.message.CacheMessageBroadcast;
+import com.cnkvha.uuol.cache.protocol.message.CacheSectionBroadcast;
+import com.cnkvha.uuol.cache.server.CacheServer;
+import com.cnkvha.uuol.cache.server.cache.GeneralCache;
+import com.cnkvha.uuol.sjl.data.SerializationTool;
+import com.cnkvha.uuol.sjl.math.Vector3Long;
+import com.sun.enterprise.ee.cms.core.CallBack;
+import com.sun.enterprise.ee.cms.core.MessageSignal;
+import com.sun.enterprise.ee.cms.core.Signal;
+import com.sun.enterprise.ee.cms.core.SignalAcquireException;
+import com.sun.enterprise.ee.cms.core.SignalReleaseException;
+
+
+/**
+ * Singleton, because the message provided which planet are we looking for. 
+ * THIS PROCESS DOES NOT PROCESS UNIVERSE BROADCASTS! 
+ */
+public class PlanetSectionBroadcastProcessor implements CallBack {
+
+	private final GeneralCache generalCache;
+
+	public PlanetSectionBroadcastProcessor(GeneralCache generalCache) {
+		this.generalCache = generalCache;
+	}
+
+	@Override
+	public void processNotification(Signal notification) {
+		try {
+			notification.acquire();
+		} catch (SignalAcquireException e) {
+			e.printStackTrace();
+			return;
+		}
+		if(!MessageSignal.class.isAssignableFrom(notification.getClass())){
+			try {
+				notification.release();
+			} catch (SignalReleaseException e) {
+			}
+			return;
+		}
+		boolean shouldUnregister = receive(notification.getMemberToken(), ((MessageSignal)notification).getMessage());
+		try {
+			notification.release();
+		} catch (SignalReleaseException e) {
+		}
+		if(shouldUnregister){
+			CacheServer.getInstance().getGms().removeMessageActionFactory(((MessageSignal)notification).getTargetComponent());
+		}
+	}
+	
+	private boolean receive(String sender, byte[] msg) {
+		Object obj = null;
+		try {
+			obj = SerializationTool.decode(msg);
+		} catch (Exception e) {
+			e.printStackTrace();
+			return true;
+		}
+		if(obj == null) return true;
+		
+		if(!CacheSectionBroadcast.class.isAssignableFrom(obj.getClass())) return true; //ONLY BROADCASTS
+		
+		UUID planetUniqueId = ((CacheSectionBroadcast)obj).planet;
+		
+		if(planetUniqueId == null){
+			return false;
+		}
+		
+		PlanetChunkCache cache = generalCache.getPlanet(planetUniqueId);
+		
+		if(cache == null){
+			//No such planet cached, useless handler registered. 
+			return false;
+		}
+		
+		cache.getBroadcastRegister().process((CacheMessageBroadcast)obj);
+		return true;
+	}
+
+	public static String getComponentName(PlanetChunkCache planet, Vector3Long section){
+		return planet.getComponentName() + "-Section-" + section.x + "_" + section.y + "_" + section.z;
+	}
+}

@@ -1,0 +1,179 @@
+package com.cnkvha.uuol.cache.server.utils.chunk;
+
+import java.sql.Blob;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+import java.util.UUID;
+
+import com.cnkvha.uuol.cache.protocol.UUOLComponent;
+import com.cnkvha.uuol.cache.protocol.data.planet.ChunkData;
+import com.cnkvha.uuol.cache.protocol.message.general.request.CacheRequestLoadChunk;
+import com.cnkvha.uuol.cache.protocol.message.general.response.CacheResponseLoadChunk;
+import com.cnkvha.uuol.cache.server.CacheServer;
+import com.cnkvha.uuol.cache.server.cache.planet.PlanetChunkCache;
+import com.cnkvha.uuol.sjl.SerializationTool;
+import com.cnkvha.uuol.sjl.db.ConnectionPool;
+import com.cnkvha.uuol.sjl.db.SQLHelper;
+import com.cnkvha.uuol.sjl.math.Vector3Long;
+
+class LoadChunkTask implements Runnable {
+
+	private final static int RECORD_LOCKED_CODE = 54;
+	
+	private final ChunkLoader loader;
+	private final CacheRequestLoadChunk req;
+
+	public LoadChunkTask(ChunkLoader loader, CacheRequestLoadChunk req){
+		this.loader = loader;
+		this.req = req;
+	}
+	
+	@Override
+	public void run() {
+		CacheResponseLoadChunk response = new CacheResponseLoadChunk();
+		response.reqid = req.reqid;
+		Connection conn = null;
+		Statement stm = null;
+		UUID cPlanet = req.planet;
+		Vector3Long cPos = req.chunkLocation;
+		String thisServer = CacheServer.getInstance().getGms().getInstanceName();
+		
+		boolean errorOccoured = false;
+		try {
+			loader.startedJob();
+			conn = ConnectionPool.getConnection();
+			if(conn == null){
+				throw new Exception("Faild to get a connection! ");
+			}
+			stm = conn.createStatement();
+			//[STEP 2]
+			{
+				ResultSet rs = null;
+				try{
+					rs = stm.executeQuery("SELECT \"SerializedData\",\"CacheServer\" FROM \"chunks\" WHERE "
+							+ SQLHelper.longEq("PlanetID_Most", cPlanet.getMostSignificantBits()) + " AND " 
+							+ SQLHelper.longEq("PlanetID_Least", cPlanet.getLeastSignificantBits()) + " AND "
+							+ SQLHelper.longEq("ChunkX", cPos.x) + " AND "
+							+ SQLHelper.longEq("ChunkY", cPos.y) + " AND " 
+							+ SQLHelper.longEq("ChunkZ", cPos.z) + " AND " 
+							+ " FOR UPDATE NOWAIT" //Locks its ass
+							);
+				}catch(SQLException sqlException){
+					if(sqlException.getErrorCode() == RECORD_LOCKED_CODE){
+						//Someone quicker than us! Sad! :P 
+						response.status = CacheResponseLoadChunk.LOADED_BY_OTHER;
+						CacheServer.getInstance().sendPacketTo(req.reqid.sender, response, UUOLComponent.GENERAL);
+						return;
+					}
+				}
+				/**
+				 * 0=cached
+				 * 1=need cache
+				 * 2=not exist
+				 */
+				int stat = -1;
+				byte[] bin = null;
+				ChunkData chunk = null;
+				String clusterInRecord = null;
+				if(rs.next()){
+					//We got the thing, check wether a cluster already cached it. 
+					clusterInRecord = rs.getString("CacheServer");
+					if(clusterInRecord.equals("") || clusterInRecord.trim().equals("") || !CacheServer.getInstance().getClientHandler().getCurrentClusters().contains(clusterInRecord)){
+						//target is fucking down, dude
+						//we re-cache it
+						stat = 1;
+						//read the shit
+						Blob blob = rs.getBlob("SerializedData");
+						bin = blob.getBytes(1, (int) blob.length());
+						//We will be putting in the cache later
+					}else{
+						stat = 0;
+					}
+				}else{
+					//Cool, this is a non-exist chunk.
+					stat = 2;
+				}
+				rs.close();
+				//Process the status number
+				if(stat == 0){
+					//[STEP 4] - Already loaded by other people
+					CacheServer.getInstance().getLogger().info("==> " + cPos.toString() + " is loaded by other people!? ");
+					response.status = CacheResponseLoadChunk.LOADED_BY_OTHER;
+					CacheServer.getInstance().sendPacketTo(req.reqid.sender, response, UUOLComponent.GENERAL);
+					return;
+				}
+				if(stat == 1){
+					//[STEP 4] - Not loaded
+					int cnt = 0;
+					try{
+						cnt = stm.executeUpdate("UPDATE \"chunks\" SET " + SQLHelper.strEq("CacheServer", thisServer) + " WHERE "
+								+ SQLHelper.longEq("PlanetID_Most", cPlanet.getMostSignificantBits()) + " AND " 
+								+ SQLHelper.longEq("PlanetID_Least", cPlanet.getLeastSignificantBits()) + " AND "
+								+ SQLHelper.longEq("ChunkX", cPos.x) + " AND "
+								+ SQLHelper.longEq("ChunkY", cPos.y) + " AND " 
+								+ SQLHelper.longEq("ChunkZ", cPos.z) + " AND " 
+								+ SQLHelper.strEq("CacheServer", clusterInRecord));
+					}catch(Exception e1){}
+					
+					if(cnt <= 0){
+						response.status = CacheResponseLoadChunk.LOADED_BY_OTHER;
+						CacheServer.getInstance().sendPacketTo(req.reqid.sender, response, UUOLComponent.GENERAL);
+						return;
+					}
+					
+					chunk = (ChunkData) SerializationTool.decode(bin);
+					
+					//Cache it
+					PlanetChunkCache planet = CacheServer.getInstance().getCache().initialPlanetCache(cPlanet, null);
+					planet.cacheChunk(cPos, chunk);
+					
+					response.status = CacheResponseLoadChunk.STATUS_LOADED;
+					CacheServer.getInstance().sendPacketTo(req.reqid.sender, response, UUOLComponent.GENERAL);
+					return;
+				}
+				if(stat == 2){
+					//[STEP 6]
+					response.status = CacheResponseLoadChunk.NOT_EXIST;
+					CacheServer.getInstance().sendPacketTo(req.reqid.sender, response, UUOLComponent.GENERAL);
+					return;
+				}
+			}
+		} catch (Exception e) {
+			errorOccoured = true;
+			CacheServer
+					.getInstance()
+					.getLogger()
+					.error("Error loading chunk "
+							+ req.chunkLocation.toString()
+							+ ", message: " + e.getMessage());
+			if(SQLException.class.isAssignableFrom(e.getClass())){
+				CacheServer
+				.getInstance()
+				.getLogger().error("SQLException SQLState=" + ((SQLException)e).getSQLState());
+			}
+			e.printStackTrace();
+			response.status = CacheResponseLoadChunk.FAILD_LOAD;
+			CacheServer.getInstance().sendPacketTo(req.reqid.sender, response,
+					UUOLComponent.GENERAL);
+		} finally {
+			try {
+				if (stm != null && !stm.isClosed()) {
+					if(errorOccoured){
+						stm.execute("ROLLBACK;");
+					}else{
+						stm.execute("COMMIT;");
+					}
+					stm.close();
+				}
+			} catch (Exception e) {}
+			if (conn != null) {
+				try {
+					conn.close();
+				} catch (Exception e) {}
+			}
+			loader.endedJob();
+		}
+	}
+}

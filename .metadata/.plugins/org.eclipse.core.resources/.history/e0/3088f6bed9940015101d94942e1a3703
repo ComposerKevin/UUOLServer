@@ -1,0 +1,7 @@
+package com.cnkvha.uuol.sjl.db;
+
+public final class SQLHelper {
+	public static encodeEquation(String field, Object obj){
+		
+	}
+}

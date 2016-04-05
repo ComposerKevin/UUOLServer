@@ -1,0 +1,9 @@
+1437654171287	Delete element
+1437654186236	Delete element
+1437756066795	Rename package 'com.cnkvha.uuol.cache.protocol.message.world'
+1437756095051	Delete elements
+1437756110030	Rename package 'com.cnkvha.uuol.cache.protocol.message.world.bc'
+1437756237816	Rename type 'CacheSectinBroadcast'
+1437756479561	Rename field 'PREFIX_WORLD'
+1437756942202	Rename type 'CacheRequestSubscribeSection'
+1437756950810	Rename type 'CacheResponseSubscribeSection'

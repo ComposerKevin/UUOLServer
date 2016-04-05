@@ -1,0 +1,90 @@
+package com.cnkvha.uuol.clientent.server;
+
+import java.util.List;
+
+import com.cnkvha.uuol.cache.protocol.handlers.BroadcastHandler;
+import com.cnkvha.uuol.cache.protocol.handlers.ClusterList;
+import com.cnkvha.uuol.cache.protocol.handlers.RequestHandler;
+import com.cnkvha.uuol.cache.protocol.handlers.SentRequestContainer;
+import com.sun.enterprise.ee.cms.core.CallBack;
+import com.sun.enterprise.ee.cms.core.MessageSignal;
+import com.sun.enterprise.ee.cms.core.Signal;
+import com.sun.enterprise.ee.cms.core.SignalAcquireException;
+import com.sun.enterprise.ee.cms.core.SignalReleaseException;
+
+public class EntranceHandler implements CallBack, ClusterList {
+
+	private final EntranceServer server;
+	
+	private final SentRequestContainer requests;
+	private final RequestHandler.RequestHandlerRegister requestRegister;
+	
+	private final BroadcastHandler.BroadcastHandlerRegister broadcastRegister;
+	
+	public EntranceHandler(EntranceServer server) {
+		this.server = server;
+		
+		requests = new SentRequestContainer(this);
+		requestRegister = new RequestHandler.RequestHandlerRegister();
+
+		broadcastRegister = new BroadcastHandler.BroadcastHandlerRegister();
+	}
+
+
+
+	@Override
+	public void processNotification(Signal notification) {
+		try {
+			notification.acquire();
+		} catch (SignalAcquireException e) {
+			e.printStackTrace();
+			return;
+		}
+		if(!MessageSignal.class.isAssignableFrom(notification.getClass())){
+			try {
+				notification.release();
+			} catch (SignalReleaseException e) {
+			}
+			return;
+		}
+		receive(notification.getMemberToken(), ((MessageSignal)notification).getMessage());
+		try {
+			notification.release();
+		} catch (SignalReleaseException e) {
+		}
+	}
+
+	
+	
+	
+	public EntranceServer getServer() {
+		return server;
+	}
+
+
+
+	@Override
+	public List<String> getCurrentClusters() {
+		return server.getGms().getGroupHandle().getCurrentCoreMembers();
+	}
+	
+	public void stop(){
+		requests.close();
+	}
+	
+	public void cleanUpRequests(){
+		requests.autoCleanUp(getCurrentClusters());
+	}
+	
+	public BroadcastHandler.BroadcastHandlerRegister getBroadcastRegister() {
+		return broadcastRegister;
+	}
+	
+	public RequestHandler.RequestHandlerRegister getRequestRegister() {
+		return requestRegister;
+	}
+	
+	public SentRequestContainer getRequests() {
+		return requests;
+	}
+}

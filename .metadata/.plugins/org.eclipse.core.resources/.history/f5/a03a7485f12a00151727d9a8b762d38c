@@ -1,0 +1,160 @@
+package com.cnkvha.uuol.cache.server.handlers.request;
+
+import java.io.ByteArrayInputStream;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+
+import com.cnkvha.uuol.cache.protocol.message.general.request.CacheRequestLoadChunk;
+import com.cnkvha.uuol.cache.protocol.message.general.response.CacheResponseLoadChunk;
+import com.cnkvha.uuol.cache.server.CacheServer;
+import com.cnkvha.uuol.cache.server.utils.ConnectionPool;
+
+public class RequestHandlerLoadChunk extends
+		RequestHandler<CacheRequestLoadChunk, CacheResponseLoadChunk> {
+
+	/*
+	 * [CHUNK LOAD PROCESS] New Chunks: 1. Make request. 2. All servers do
+	 * `INSERT ... WHERE NOT EXISTS ( SELECT ... )` and set loaded flag to true.
+	 * 3. If affected rows > 0, the chunk is NOT generated and there is already
+	 * select by only one server, 4. Selected server will generate the chunk,
+	 * and write back to the MySQL. 5. Send chunk loaded message to all.
+	 * 
+	 * Old Chunks: 1. Make request. 2. All servers do `INSERT ... WHERE NOT
+	 * EXISTS ( SELECT ... )` and set loaded flag to true. 3. If affected rows
+	 * == 0, the chunks is already loaded 4. Selected server will generate the
+	 * chunk, and write back to the MySQL. 5. Send chunk loaded message to all.
+	 */
+
+	@Override
+	public CacheResponseLoadChunk handle(CacheRequestLoadChunk req) {
+		CacheResponseLoadChunk response = new CacheResponseLoadChunk();
+
+		System.out.println("Trying to load chunk "
+				+ req.chunkLocation.toString());
+		Connection conn = ConnectionPool.getConnection();
+		if (conn == null) {
+			response.status = CacheResponseLoadChunk.FAILD_LOAD;
+			return response;
+		}
+
+		CacheServer.getInstance().getThreadPool().execute(new Runnable() {
+			@Override
+			public void run() {
+				try {
+					boolean exists = false;
+					//DETECT EXISTANCE
+					{
+						PreparedStatement stm = conn
+								.prepareStatement("INSERT INTO `chunks` )"
+										+ "`PlanetID_Most`, `PlanetID_Least`, `ChunkX`, `ChunkY`, `ChunkZ`, `SerializedData`, `CacheServer`) VALUES("
+										+ "?,?,?,?,?,?,'"
+										+ CacheServer.getInstance()
+												.getChannel().getClusterName()
+										+ "'"
+										+ ") WHERE NOT EXISTS ("
+										+ "SELECT * FROM `chunks` WHERE `PlanetID_Most`=? AND `PlanetID_Least`=? AND `ChunkX`=? AND `ChunkY`=? AND "
+										+ "`ChunkZ`=?" + ")");
+						// INSERT
+						stm.setLong(1, req.world.getMostSignificantBits());
+						stm.setLong(2, req.world.getLeastSignificantBits());
+						stm.setLong(3, req.chunkLocation.x);
+						stm.setLong(4, req.chunkLocation.y);
+						stm.setLong(5, req.chunkLocation.z);
+						stm.setBlob(6, new ByteArrayInputStream(new byte[0]));
+						// SUB-CLAUSE
+						stm.setLong(7, req.world.getMostSignificantBits());
+						stm.setLong(8, req.world.getLeastSignificantBits());
+						stm.setLong(9, req.chunkLocation.x);
+						stm.setLong(10, req.chunkLocation.y);
+						stm.setLong(11, req.chunkLocation.z);
+						exists = stm.executeUpdate() <= 0;
+					}
+					if(!exists){
+						//Not existing, we generate one and write default chunk back
+						//TODO
+					}else{
+						//Existing already, we check the load status and return it back
+						boolean loadedByOther = false;
+						{
+							PreparedStatement stm = conn.prepareStatement("UPDATE `chunks` SET `CacheServer`='" + CacheServer.getInstance().getChannel().getClusterName() + "' WHERE "
+									+ "`PlanetID_Most`=? AND "
+									+ "`PlanetID_Least`=? AND "
+									+ "`ChunkX`=? AND `ChunkY`=? AND `ChunkZ`=? "
+									+ "AND `CacheServer`=''");
+							stm.setLong(1, req.world.getMostSignificantBits());
+							stm.setLong(2, req.world.getLeastSignificantBits());
+							stm.setLong(3, req.chunkLocation.x);
+							stm.setLong(4, req.chunkLocation.y);
+							stm.setLong(5, req.chunkLocation.z);
+							loadedByOther = stm.executeUpdate() <= 0;
+						}
+						if(loadedByOther){
+							//Loaded by another server, let's check the online status.
+							String cached = null;
+							{
+								PreparedStatement stm = conn.prepareStatement("SELECT `CacheServer` FROM `chunks` WHERE "
+										+ "`PlanetID_Most`=? AND "
+										+ "`PlanetID_Least`=? AND "
+										+ "`ChunkX`=? AND `ChunkY`=? AND `ChunkZ`=?");
+								stm.setLong(1, req.world.getMostSignificantBits());
+								stm.setLong(2, req.world.getLeastSignificantBits());
+								stm.setLong(3, req.chunkLocation.x);
+								stm.setLong(4, req.chunkLocation.y);
+								stm.setLong(5, req.chunkLocation.z);
+								ResultSet rs = stm.executeQuery();
+								if(!rs.next()){
+									throw new Exception(); 
+								}
+								cached = rs.getString("CacheServer");
+							}
+							if(cached == null){
+								throw new Exception();
+							}
+							if(cached == ""){
+								loadedByOther = false;
+							}else{
+								if(CacheServer.getInstance().getClientHandler().getCurrentClusters().contains(cached)){
+									//Loaded by other
+									response.reqid = req.reqid;
+									response.status = CacheResponseLoadChunk.LOADED_BY_OTHER;
+									CacheServer.getInstance().sendPacket(response);
+									return;
+								}else{
+									//Target is down, we have to reload it manually
+									//TODO: LOADING PROECSS
+									{
+										PreparedStatement stm = conn.prepareStatement("UPDATE `chunks` SET `CacheServer`='" +
+												CacheServer.getInstance().getChannel().getClusterName()
+												+ "' WHERE "
+												+ "`PlanetID_Most`=? AND "
+												+ "`PlanetID_Least`=? AND "
+												+ "`ChunkX`=? AND `ChunkY`=? AND `ChunkZ`=? AND `CacheServer`='" + cached + "'");
+										stm.setLong(1, req.world.getMostSignificantBits());
+										stm.setLong(2, req.world.getLeastSignificantBits());
+										stm.setLong(3, req.chunkLocation.x);
+										stm.setLong(4, req.chunkLocation.y);
+										stm.setLong(5, req.chunkLocation.z);
+									}
+									response.reqid = req.reqid;
+									response.status = CacheResponseLoadChunk.STATUS_LOADED;
+									CacheServer.getInstance().sendPacket(response);
+									return;
+								}
+							}
+						}
+						//No server loaded that chunk, we have to load it
+						//TODO
+					}
+				} catch (Exception e) {
+					response.reqid = req.reqid;
+					response.status = CacheResponseLoadChunk.FAILD_LOAD;
+					CacheServer.getInstance().sendPacket(response);
+				}
+			}
+		});
+		return null; // Return later
+	}
+
+}

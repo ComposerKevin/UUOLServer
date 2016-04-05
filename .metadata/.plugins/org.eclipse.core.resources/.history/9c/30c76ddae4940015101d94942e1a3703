@@ -1,0 +1,23 @@
+package com.cnkvha.uuol.sjl;
+
+import java.io.ByteArrayOutputStream;
+import java.io.DataOutputStream;
+
+public final class ByteArrayDataOutput {
+	
+	private final ByteArrayOutputStream bos;
+	private final DataOutputStream dos;
+	
+	public ByteArrayDataOutput() {
+		bos = new ByteArrayOutputStream();
+		dos = new DataOutputStream(bos);
+	} 
+	
+	public byte[] getBytes() {
+		return bos.toByteArray();
+	}
+	
+	public DataOutputStream getOutput() {
+		return dos;
+	}
+}

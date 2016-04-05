@@ -1,0 +1,11 @@
+import com.cnkvha.uuol.cache.protocol.data.planet.ChunkData;
+import com.cnkvha.uuol.sjl.SerializationTool;
+
+public class TEST {
+	public static void main(String[] args) throws Exception{
+		ChunkData c = new ChunkData();
+		byte[] data = SerializationTool.encode(c, 10000000);
+		System.out.println(data.length);
+		ChunkData e = (ChunkData) SerializationTool.decode(data, 50000000);
+	}
+}

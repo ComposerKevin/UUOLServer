@@ -1,0 +1,12 @@
+package com.cnkvha.uuol.sjl.db;
+
+public final class SQLHelper {
+	public static String encodeEquation(String field, Object obj){
+		String initial = "\"" + field + "\"=";
+		if(int.class.isAssignableFrom(obj.getClass())){
+			initial += (int)obj;
+		}else if(Integer.class.isAssignableFrom(obj)){
+			initial += ((Integer)obj).intValue();
+		}
+	}
+}

@@ -1,0 +1,62 @@
+package com.cnkvha.uuol.cache.server.handlers.request.general;
+
+import java.sql.Blob;
+import java.sql.Connection;
+import java.sql.ResultSet;
+import java.sql.Statement;
+import java.util.UUID;
+
+import com.cnkvha.uuol.cache.protocol.UUOLComponent;
+import com.cnkvha.uuol.cache.protocol.data.planet.ChunkData;
+import com.cnkvha.uuol.cache.protocol.handlers.RequestHandler;
+import com.cnkvha.uuol.cache.protocol.message.general.request.CacheRequestLoadChunk;
+import com.cnkvha.uuol.cache.protocol.message.general.response.CacheResponseLoadChunk;
+import com.cnkvha.uuol.cache.server.CacheServer;
+import com.cnkvha.uuol.cache.server.cache.planet.PlanetChunkCache;
+import com.cnkvha.uuol.sjl.ConnectionPool;
+import com.cnkvha.uuol.sjl.SerializationTool;
+import com.cnkvha.uuol.sjl.math.Vector3Long;
+
+public class RequestHandlerLoadChunk extends
+		RequestHandler<CacheRequestLoadChunk, CacheResponseLoadChunk> {
+
+	public final static RequestHandlerLoadChunk STATIC_INSTANCE = new RequestHandlerLoadChunk();
+	
+	 /* [CHUNK LOAD PROCESS]
+	 * 1. REMOVED!! - Disable AUTO_COMMIT
+	 * 2. DO: SELECT `SerializedData` FROM `chunks` WHERE ... [(REMOVED)FOR UPDATE]
+	 * 3. Not null, already generated and continue steps. Else, go to step [6]
+	 * 4. Check that cluster is online or not, if not, update to ourself and load the data. 
+	 * 5. Do 'COMMIT' and exit process
+	 * 6. Return NOT_FOUND state
+	 */
+	
+
+	@Override
+	public CacheResponseLoadChunk handle(CacheRequestLoadChunk req) {
+		CacheResponseLoadChunk response = new CacheResponseLoadChunk();
+		response.reqid = req.reqid;
+		
+		final String thisServer = CacheServer.getInstance().getGms().getInstanceName();
+		final UUID cPlanet = req.planet;
+		final Vector3Long cPos = req.chunkLocation;
+		
+		//Detect if already loaded
+		{
+			PlanetChunkCache planet = CacheServer.getInstance().getCache().getPlanet(cPlanet);
+			if(planet != null){
+				if(planet.isChunkCached(cPos)){
+					response.reqid = req.reqid;
+					response.status = CacheResponseLoadChunk.STATUS_ALREADY_LOADED;
+					return response;
+				}
+			}
+		}
+		
+		CacheServer.getInstance().getLogger().info("==> Continuing process... ");
+
+		CacheServer.getInstance().getChunkLoader().submitWork(req);
+		return null; // Return later
+	}
+
+}

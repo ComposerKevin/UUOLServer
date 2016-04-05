@@ -1,0 +1,100 @@
+package com.cnkvha.uuol.cache.protocol.data.planet;
+
+import java.io.Externalizable;
+import java.io.IOException;
+import java.io.ObjectInput;
+import java.io.ObjectOutput;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+
+import com.cnkvha.uuol.cache.protocol.data.meta.MetaData;
+import com.cnkvha.uuol.sjl.world.ChunkUtils;
+
+public final class ChunkData implements Externalizable {
+	private static final long serialVersionUID = 8800429243590157185L;
+
+	/*
+	 * POSITION -> INDEX
+	 * NO-USE(8) | 8(x) | 8(y) | 8(z)
+	 */
+	
+	private transient String hash;
+	private transient MessageDigest hasher;
+	
+	private int[] blockId;
+	
+	private MetaData[] blockExtraMeta;
+	
+	public ChunkData() {
+		blockId = new int[128*128*128];
+		blockExtraMeta = new MetaData[128*128*128];
+	}
+	
+	public ChunkData(int[] blockId, MetaData[] blockExtraMeta) {
+		this.blockId = blockId;
+		this.blockExtraMeta = blockExtraMeta;
+	}
+	
+	private void initHasher(){
+		try {
+			hasher = MessageDigest.getInstance("MD5");
+		} catch (NoSuchAlgorithmException e) {
+		}
+	}
+	
+	public MetaData[] getAllBlockExtraMeta() {
+		return blockExtraMeta;
+	}
+	
+	public int[] getAllBlockId() {
+		return blockId;
+	}
+	
+	public void setAllBlockId(int[] blockId) {
+		this.blockId = blockId;
+	}
+	
+	//SINGLE SETTERS
+	public int getBlockId(int x, int y, int z){
+		return blockId[ChunkUtils.positionToIndex(x, y, z)];
+	}
+	
+	public void setBlockId(int x, int y, int z, int id){
+		setBlock(x, y, z, id, null);
+	}
+	
+	public MetaData getBlockExtraMeta(int x, int y, int z){
+		if(blockExtraMeta[ChunkUtils.positionToIndex(x, y, z)] == null){
+			blockExtraMeta[ChunkUtils.positionToIndex(x, y, z)] = new MetaData();
+		}
+		return blockExtraMeta[ChunkUtils.positionToIndex(x, y, z)];
+	}
+	
+	public void setBlockExtraMeta(int x, int y, int z, MetaData extra){
+		blockExtraMeta[ChunkUtils.positionToIndex(x, y, z)] = extra != null ? extra : new MetaData();
+	}
+	
+	public void setBlock(int x, int y, int z, int id, MetaData extraMeta){
+		int idx = ChunkUtils.positionToIndex(x, y, z);
+		blockId[idx] = id;
+		blockExtraMeta[idx] = extraMeta != null ? extraMeta : new MetaData();
+	}
+
+	//TODO: Add compression control
+	
+	@Override
+	public void writeExternal(ObjectOutput out) throws IOException {
+		out.writeObject(blockId);
+		out.writeObject(blockExtraMeta);
+	}
+
+	@Override
+	public void readExternal(ObjectInput in) throws IOException,
+			ClassNotFoundException {
+		blockId = (int[]) in.readObject();
+		blockExtraMeta = (MetaData[]) in.readObject();
+	}
+	
+	
+	
+}

@@ -1,0 +1,14 @@
+package com.cnkvha.uuol.cache.server.generator;
+
+import com.cnkvha.uuol.cache.protocol.data.planet.ChunkData;
+
+public class TestGenerator implements PlanetGenerator {
+
+	@Override
+	public ChunkData generate(long seed, long chunkX, long chunkY, long chunkZ) {
+		ChunkData data = new ChunkData();
+		data.setBlock(8, 8, 8, 1, null);
+		return data;
+	}
+
+}

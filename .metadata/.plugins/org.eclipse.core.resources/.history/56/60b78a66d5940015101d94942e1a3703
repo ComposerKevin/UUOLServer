@@ -1,0 +1,141 @@
+package com.cnkvha.uuol.test.planetgen;
+
+import java.io.ByteArrayInputStream;
+import java.sql.Blob;
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.sql.SQLException;
+import java.sql.Statement;
+
+import com.cnkvha.uuol.cache.protocol.data.meta.MetaData;
+import com.cnkvha.uuol.cache.protocol.data.meta.type.MetaDataStringElement;
+import com.cnkvha.uuol.cache.protocol.data.planet.ChunkData;
+import com.cnkvha.uuol.sjl.ConnectionPool;
+import com.cnkvha.uuol.sjl.SerializationTool;
+
+public class TestPlanetChunkGenerator {
+
+	public static void main(String[] args) throws Exception {
+		try{
+			new TestPlanetChunkGenerator().runRecreatePlanet();
+		}catch(SQLException ex){
+			log(ex.getSQLState());
+			log(ex.getErrorCode() + "");
+			throw ex;
+		}
+	}
+	
+	private void runTestChunk() throws Exception {
+		log("Started");
+		log("Loading MySQL Drivers");
+		ConnectionPool.loadDriver();
+		log("Aquiring connection");
+		Connection conn = ConnectionPool.getConnection();
+		if(conn == null){
+			log("Error! ");
+			return;
+		}
+		log("Connection established");
+		Statement stm = conn.createStatement();
+		ResultSet rs = stm.executeQuery("SELECT * FROM C##UUOL.\"chunks\" WHERE \"PlanetID_Most\"=0 AND \"PlanetID_Least\"=0 AND \"ChunkX\"=0 AND \"ChunkY\"=0 AND \"ChunkZ\"=0");
+		if(rs.next()){
+			Blob blob = rs.getBlob("SerializedData");
+			byte[] bin = blob.getBytes(1, (int) blob.length());
+			ChunkData c = (ChunkData) SerializationTool.decode(bin);
+			log("Block at (0,0,0) is " + c.getBlockId(0, 0, 0));
+			log("Meta: " + c.getBlockExtraMeta(0, 0, 0).get("test", null).getData().toString());
+		}else{
+			log("Can not find the chunk! ");
+		}
+		rs.close();
+		stm.close();
+		conn.close();
+	}
+	
+	
+	private void runRecreatePlanet() throws Exception{
+		log("Started");
+		log("Loading MySQL Drivers");
+		ConnectionPool.loadDriver();
+		log("Aquiring connection");
+		Connection conn = ConnectionPool.getConnection();
+		if(conn == null){
+			log("Error! ");
+			return;
+		}
+		log("Connection established");
+
+		step("Truncating table... ");
+		{
+			slog("Creating temporary statement... ");
+			Statement s = conn.createStatement();
+			s.execute("TRUNCATE TABLE \"chunks\"");
+			s.close();
+		}
+		
+		step("Model");
+		slog("Creating object");
+		ChunkData data = new ChunkData();
+		MetaData meta = new MetaData();
+		meta.set("test", new MetaDataStringElement("test data"));
+		data.setBlock(0, 0, 0, 1, meta);
+		slog("Serializing");
+		byte[] chunkBinary = SerializationTool.encode(data, 400000);
+		step("Preparing");
+		slog("Constructing SQL");
+		PreparedStatement stm = conn.prepareStatement("INSERT INTO \"chunks\" "
+				+ "(\"PlanetID_Most\",\"PlanetID_Least\",\"ChunkX\",\"ChunkY\",\"ChunkZ\",\"SerializedData\",\"CacheServer\") VALUES"
+				+ "(0,0,?,?,?,?,emply_blob())");
+		slog("Setting data");
+		//ByteArrayInputStream dataIn = new ByteArrayInputStream(chunkBinary);
+		//stm.setBlob(4, dataIn);
+		slog("Entering loop");
+		if(!(1 > 500)) return;
+		step("Uploading");
+		for(long x = -16; x < 16; x++){
+			for(long y = -16; y < 16; y++){
+				for(long z = -16; z < 16; z++){
+					//dataIn.reset();
+					slog(" Inserting for pos " + String.format("(%s,%s,%s)", x, y, z));
+					stm.setLong(1, x);
+					stm.setLong(2, y);
+					stm.setLong(3, z);
+					int updates = stm.executeUpdate();
+					if(updates <= 0){
+						log("ERROR! Faild to INSERT. ");
+						break;
+					}
+				}
+			}
+		}
+		step("Cleaning up");
+		slog("Closing stream");
+		dataIn.close();
+		slog("Closing connections");
+		stm.close();
+		conn.close();
+		step("Exiting");
+	}
+	
+	
+	
+	
+	
+	private static void log(String s){
+		System.out.println(" >> " + s);
+	}
+	
+	private static String current_step = "DEFAULT";
+	
+	private static void step(String st){
+		log("Entering step [" + st + "]");
+		current_step = st;
+	}
+	
+	//Step log
+	private static void slog(String s){
+		log(" [" + current_step + "] --> " + s);
+	}
+
+}

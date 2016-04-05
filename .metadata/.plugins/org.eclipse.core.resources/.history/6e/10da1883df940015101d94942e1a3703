@@ -1,0 +1,286 @@
+package com.cnkvha.uuol.cache.server.cache.planet;
+
+import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.ResultSet;
+import java.util.Collections;
+import java.util.HashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
+import com.cnkvha.uuol.cache.protocol.UUOLComponent;
+import com.cnkvha.uuol.cache.protocol.data.RequestIdentifier;
+import com.cnkvha.uuol.cache.protocol.data.planet.ChunkData;
+import com.cnkvha.uuol.cache.protocol.handlers.BroadcastHandler;
+import com.cnkvha.uuol.cache.protocol.handlers.ResponseHandler;
+import com.cnkvha.uuol.cache.protocol.message.CacheAbstractMessage;
+import com.cnkvha.uuol.cache.protocol.message.CacheMessageBroadcast;
+import com.cnkvha.uuol.cache.protocol.message.general.request.CacheRequestLoadChunk;
+import com.cnkvha.uuol.cache.protocol.message.general.response.CacheResponseLoadChunk;
+import com.cnkvha.uuol.cache.server.CacheServer;
+import com.cnkvha.uuol.sjl.SerializationTool;
+import com.cnkvha.uuol.sjl.StringTools;
+import com.cnkvha.uuol.sjl.db.ConnectionPool;
+import com.cnkvha.uuol.sjl.interfaces.DirectCallback;
+import com.cnkvha.uuol.sjl.math.CoordinateConverter;
+import com.cnkvha.uuol.sjl.math.Vector3Long;
+import com.sun.enterprise.ee.cms.core.CallBack;
+import com.sun.enterprise.ee.cms.core.MessageSignal;
+import com.sun.enterprise.ee.cms.core.Signal;
+import com.sun.enterprise.ee.cms.core.SignalAcquireException;
+import com.sun.enterprise.ee.cms.core.SignalReleaseException;
+
+public final class PlanetChunkCache implements CallBack {
+	
+	/*
+	 * 1 Planet Section = 32 * 32 * 32 Chunks
+	 * 
+	 * Broadcast section at component: 
+	 * [PREFIX_PLANET] + [WORLD_UUID] + "-Section-" + [SectionX] + "_" + [SectionY] + "_" + [SectionZ]
+	 * 
+	 */
+	
+	private final PlanetSectionSubscriptionManager sectionManager = new PlanetSectionSubscriptionManager(this);
+	
+	private final CacheServer server;
+	
+	private final UUID planet;
+	
+	private final BroadcastHandler.BroadcastHandlerRegister bcRegister = new BroadcastHandler.BroadcastHandlerRegister();
+	
+	//Info
+	private long sectionX;
+	private long sectionY;
+	private long sectionZ;
+	private double centerX;
+	private double centerY;
+	private double centerZ;
+	private double planetRadius;
+	private double enterRadius;
+	private double orbitRadius;
+	private double periodPerMinute;
+	private double lastAng;
+	private long lastTime; //We use this to caculate current angle
+
+	//Networking
+	private final String componentName;
+	
+	// NO REQUESTS FOR PLANETS
+	//private final SentRequestContainer requests;
+	//private final RequestHandler.RequestHandlerRegister requestRegister;
+	
+	private final Map<Vector3Long, ChunkData> chunks;
+	
+	public PlanetChunkCache(CacheServer server, UUID world, DirectCallback afterInitiating) throws Exception {
+		this.server = server;
+		this.planet = world;
+		//Grab the info
+		componentName = UUOLComponent.PREFIX_PLANET + world.toString();
+		
+		chunks = Collections.synchronizedMap(new HashMap<>());
+		
+		
+		//LOAD INFO FROM MYSQL
+		loadInfo();
+		
+		//TODO:
+		//Register broadcast handlers
+		//bcRegister.register(clazz, handler);
+		//...
+		
+		if(afterInitiating != null){
+			afterInitiating.run();
+		}
+	}
+	
+	private void loadInfo() throws Exception{
+		Connection conn = ConnectionPool.getConnection();
+		PreparedStatement stm = conn.prepareStatement("SELECT * FROM \"planets\" WHERE \"UUID_Most\"=? AND \"UUID_Least\"=?");
+		stm.setLong(1, planet.getMostSignificantBits());
+		stm.setLong(2, planet.getLeastSignificantBits());
+		ResultSet rs = stm.executeQuery();
+		if(!rs.next()){
+			//Planet disappeared???
+			rs.close();
+			stm.close();
+			conn.close();
+			throw new Exception("Can not find planet " + getPlanet().toString() + "! ");
+		}
+		sectionX = rs.getLong("SectionX");
+		sectionY = rs.getLong("SectionY");
+		sectionZ = rs.getLong("SectionZ");
+		centerX = rs.getDouble("CenterPosX");
+		centerY = rs.getDouble("CenterPosY");
+		centerZ = rs.getDouble("CenterPosZ");
+		planetRadius = rs.getDouble("PlanetRadius");
+		enterRadius = rs.getDouble("EnterRadius");
+		orbitRadius = rs.getDouble("OrbitRadius");
+		periodPerMinute = rs.getDouble("PeriodPerMinute");
+		lastAng = rs.getDouble("LastAngular");
+		lastTime = rs.getLong("LastTime");
+		rs.close();
+		stm.close();
+		conn.close();
+	}
+	
+	/**
+	 * We must clean up when we removing this from cache. 
+	 */
+	public void unload(){
+		getServer().getGms().removeMessageActionFactory(componentName);
+		sectionManager.unload();
+	}
+	
+	@Override
+	public void processNotification(Signal notification) {
+		try {
+			notification.acquire();
+		} catch (SignalAcquireException e) {
+			e.printStackTrace();
+			return;
+		}
+		if(!MessageSignal.class.isAssignableFrom(notification.getClass())){
+			try {
+				notification.release();
+			} catch (SignalReleaseException e) {
+			}
+			return;
+		}
+		receive(notification.getMemberToken(), ((MessageSignal)notification).getMessage());
+		try {
+			notification.release();
+		} catch (SignalReleaseException e) {
+		}
+	}
+	
+	private void receive(String sender, byte[] msg) {
+		Object obj = null;
+		try {
+			obj = SerializationTool.decode(msg);
+		} catch (Exception e) {
+			e.printStackTrace();
+			server.getLogger().error("Packet decode error from " + sender + "! ");
+			return;
+		}
+		if(obj == null) return;
+		
+		if(!CacheMessageBroadcast.class.isAssignableFrom(obj.getClass())) return; //ONLY BROADCASTS
+		
+		bcRegister.process((CacheMessageBroadcast)obj);
+		
+	}
+	
+	
+	
+	/* Accessors */
+	
+	public String getComponentName() {
+		return componentName;
+	}
+	
+	public synchronized void cacheChunk(Vector3Long loc, ChunkData data){
+		chunks.put(loc, data);
+		//We do the shit here! 
+		sectionManager.listen(CoordinateConverter.chunk2section(loc), loc);
+	}
+	
+	public synchronized void uncacheChunk(Vector3Long loc){
+		chunks.remove(loc);
+		//We do the shit here! 
+		sectionManager.unlisten(CoordinateConverter.chunk2section(loc), loc);
+	}
+
+	public boolean isChunkCached(Vector3Long loc){
+		return chunks.containsKey(loc);
+	}
+	
+	public CacheServer getServer() {
+		return server;
+	}
+	
+	public UUID getPlanet() {
+		return planet;
+	}
+	
+	public BroadcastHandler.BroadcastHandlerRegister getBroadcastRegister() {
+		return bcRegister;
+	}
+	
+	/**
+	 * Send packet to planet component. 
+	 * @param msg
+	 */
+	public synchronized void sendPacket(CacheAbstractMessage msg){
+		server.broadcastPacket(msg, componentName); //Send to planet component
+	}
+	
+	public double getPeriodPerMinute() {
+		return periodPerMinute;
+	}
+	
+	public double getCenterX() {
+		return centerX;
+	}
+	
+	public double getCenterY() {
+		return centerY;
+	}
+	
+	public double getCenterZ() {
+		return centerZ;
+	}
+	
+	public long getSectionX() {
+		return sectionX;
+	}
+	
+	public long getSectionY() {
+		return sectionY;
+	}
+	
+	public long getSectionZ() {
+		return sectionZ;
+	}
+	
+	public double getOrbitRadius() {
+		return orbitRadius;
+	}
+	
+	public double getPlanetRadius() {
+		return planetRadius;
+	}
+	
+	public double getEnterRadius() {
+		return enterRadius;
+	}
+	
+	public double getLastAng() {
+		return lastAng;
+	}
+	
+	public double getCurrentAngle(){
+		double diffMins = (System.currentTimeMillis() - lastTime) / 60000;
+		double cycledAngle = diffMins * periodPerMinute * 360;
+		double currentAngle = (lastAng + cycledAngle) % 360;
+		//Update! 
+		lastAng = currentAngle;
+		lastTime = System.currentTimeMillis();
+		return currentAngle;
+	}
+	
+	public String generateRandomPointer(){
+		return System.currentTimeMillis() + StringTools.rndString(8);
+	}
+	
+	/**
+	 * @param pos
+	 * @param whenDone
+	 */
+	public void requestLoadChunk(Vector3Long pos, ResponseHandler<CacheResponseLoadChunk> whenDone){
+		RequestIdentifier reqId = new RequestIdentifier(getServer().getGms().getInstanceName(), UUID.randomUUID());
+		CacheRequestLoadChunk pk = new CacheRequestLoadChunk(reqId, this.planet, pos);
+		getServer().getClientHandler().getRequests().register(getServer().getClientHandler().getCurrentClusters(), pk.reqid, whenDone);
+		getServer().broadcastPacket(pk, UUOLComponent.GENERAL); //Requests can only be in GENERAL component
+	}
+}

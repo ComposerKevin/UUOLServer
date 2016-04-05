@@ -1,0 +1,30 @@
+package com.cnkvha.uuol.cache.server.utils;
+
+import java.util.Deque;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.LinkedBlockingDeque;
+import java.util.concurrent.atomic.AtomicInteger;
+
+import com.cnkvha.uuol.cache.protocol.message.general.request.CacheRequestLoadChunk;
+import com.cnkvha.uuol.sjl.GlobalConfiguration;
+
+public class ChunkLoader {
+	private final ExecutorService loaders;
+	
+	private AtomicInteger counter;
+	
+	public ChunkLoader() {
+		 loaders = Executors.newFixedThreadPool(GlobalConfiguration.CHUNK_LOADER_THREADPOOL_SIZE);
+	}
+	
+
+	
+	protected void startedJob(){
+		counter.incrementAndGet();
+	}
+	
+	protected void endedJob(){
+		counter.decrementAndGet();
+	}
+}
